@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import ReactECharts from 'echarts-for-react'
 import { ArrowLeft, Search, Filter, ThermometerSun, BarChart3 } from 'lucide-react'
 import { cityHeatData, cityHasDetail, getDistrictsForCity, getStationsForCity, getBoxPlotForCity, getTempHistoryForStation } from '@/data/mockData'
+import { useAppStore, ROLE_REGION_MAP } from '@/store'
 
 const statusMap: Record<string, { label: string; bg: string }> = {
   normal: { label: '正常', bg: 'bg-green-500/20 text-green-400' },
@@ -13,13 +14,30 @@ const statusMap: Record<string, { label: string; bg: string }> = {
 export default function RegionDetail() {
   const { cityId } = useParams<{ cityId: string }>()
   const navigate = useNavigate()
+  const currentUser = useAppStore((s) => s.currentUser)
   const id = cityId || 'beijing'
   const city = cityHeatData.find((c) => c.cityId === id) || cityHeatData.find((c) => c.cityId === 'beijing')!
   const hasDetail = cityHasDetail(id)
 
   const districts = useMemo(() => hasDetail ? getDistrictsForCity(id) : [], [id, hasDetail])
-  const allStations = useMemo(() => hasDetail ? getStationsForCity(id) : [], [id, hasDetail])
-  const boxPlotData = useMemo(() => hasDetail ? getBoxPlotForCity(id) : [], [id, hasDetail])
+  const rawStations = useMemo(() => hasDetail ? getStationsForCity(id) : [], [id, hasDetail])
+  const allStations = useMemo(() => {
+    if (!currentUser) return rawStations
+    if (currentUser.role === 'headquarters' || currentUser.role === 'regional') return rawStations
+    if (currentUser.role === 'team_leader') {
+      return rawStations.filter((s) => s.districtName.includes('海淀'))
+    }
+    return rawStations.filter((s) => s.stationName.includes('中关村'))
+  }, [rawStations, currentUser])
+  const boxPlotData = useMemo(() => {
+    if (!currentUser) return hasDetail ? getBoxPlotForCity(id) : []
+    if (currentUser.role === 'team_leader') {
+      const full = hasDetail ? getBoxPlotForCity(id) : []
+      return full.filter((d) => d.districtName.includes('海淀'))
+    }
+    if (currentUser.role === 'operator') return []
+    return hasDetail ? getBoxPlotForCity(id) : []
+  }, [id, hasDetail, currentUser])
 
   const getTempHistory = (stationId: string) => {
     const station = allStations.find(s => s.stationId === stationId)
@@ -49,18 +67,25 @@ export default function RegionDetail() {
     })
   }
 
+  const visibleDistricts = useMemo(() => {
+    if (!currentUser) return districts
+    if (currentUser.role === 'team_leader') return districts.filter((d) => d.districtName.includes('海淀'))
+    if (currentUser.role === 'operator') return []
+    return districts
+  }, [districts, currentUser])
+
   const kpiOption = useMemo(() => ({
     tooltip: { trigger: 'axis' as const },
     legend: { data: ['供热效率', '达标率', '热损耗率'], textStyle: { color: '#94A3B8' } },
     grid: { left: 40, right: 20, top: 40, bottom: 30 },
-    xAxis: { type: 'category' as const, data: districts.map((d) => d.districtName), axisLabel: { color: '#94A3B8' } },
+    xAxis: { type: 'category' as const, data: visibleDistricts.map((d) => d.districtName), axisLabel: { color: '#94A3B8' } },
     yAxis: { type: 'value' as const, axisLabel: { color: '#94A3B8' } },
     series: [
-      { name: '供热效率', type: 'bar', data: districts.map((d) => d.heatingEfficiency), itemStyle: { color: '#3B82F6' } },
-      { name: '达标率', type: 'bar', data: districts.map((d) => d.complianceRate), itemStyle: { color: '#22C55E' } },
-      { name: '热损耗率', type: 'bar', data: districts.map((d) => d.heatLossRate), itemStyle: { color: '#F97316' } },
+      { name: '供热效率', type: 'bar', data: visibleDistricts.map((d) => d.heatingEfficiency), itemStyle: { color: '#3B82F6' } },
+      { name: '达标率', type: 'bar', data: visibleDistricts.map((d) => d.complianceRate), itemStyle: { color: '#22C55E' } },
+      { name: '热损耗率', type: 'bar', data: visibleDistricts.map((d) => d.heatLossRate), itemStyle: { color: '#F97316' } },
     ],
-  }), [districts])
+  }), [visibleDistricts])
 
   const trendOption = useMemo(() => {
     const sids = Array.from(selected)
@@ -116,23 +141,31 @@ export default function RegionDetail() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className="bg-[#1E293B] border border-[#334155] rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <BarChart3 size={16} className="text-[#3B82F6]" />
-                <span className="text-xs text-[#94A3B8]">区县KPI对比</span>
+          {visibleDistricts.length > 0 && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="bg-[#1E293B] border border-[#334155] rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <BarChart3 size={16} className="text-[#3B82F6]" />
+                  <span className="text-xs text-[#94A3B8]">区县KPI对比</span>
+                </div>
+                <ReactECharts option={kpiOption} style={{ height: 260 }} />
               </div>
-              <ReactECharts option={kpiOption} style={{ height: 260 }} />
-            </div>
 
-            <div className="bg-[#1E293B] border border-[#334155] rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <ThermometerSun size={16} className="text-[#F97316]" />
-                <span className="text-xs text-[#94A3B8]">室温分布箱线图</span>
-              </div>
-              <ReactECharts option={boxPlotOption} style={{ height: 260 }} />
+              {boxPlotData.length > 0 ? (
+                <div className="bg-[#1E293B] border border-[#334155] rounded-xl p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <ThermometerSun size={16} className="text-[#F97316]" />
+                    <span className="text-xs text-[#94A3B8]">室温分布箱线图</span>
+                  </div>
+                  <ReactECharts option={boxPlotOption} style={{ height: 260 }} />
+                </div>
+              ) : (
+                <div className="bg-[#1E293B] border border-[#334155] rounded-xl p-4 flex items-center justify-center">
+                  <span className="text-[#94A3B8] text-xs">当前角色无箱线图数据</span>
+                </div>
+              )}
             </div>
-          </div>
+          )}
 
           <div className="bg-[#1E293B] border border-[#334155] rounded-xl p-4">
             <div className="flex items-center gap-2 mb-3">
