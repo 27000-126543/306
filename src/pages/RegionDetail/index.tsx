@@ -1,9 +1,10 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import ReactECharts from 'echarts-for-react'
-import { ArrowLeft, Search, Filter, ThermometerSun, BarChart3 } from 'lucide-react'
+import { ArrowLeft, Search, Filter, ThermometerSun, BarChart3, Wrench, Camera, Send } from 'lucide-react'
 import { cityHeatData, cityHasDetail, getDistrictsForCity, getStationsForCity, getBoxPlotForCity, getTempHistoryForStation } from '@/data/mockData'
 import { useAppStore, ROLE_REGION_MAP } from '@/store'
+import type { MaintenanceRecord } from '@/types'
 
 const statusMap: Record<string, { label: string; bg: string }> = {
   normal: { label: '正常', bg: 'bg-green-500/20 text-green-400' },
@@ -49,6 +50,16 @@ export default function RegionDetail() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [districtFilter, setDistrictFilter] = useState('all')
   const [selected, setSelected] = useState<Set<string>>(new Set())
+
+  const [maintenanceRecords, setMaintenanceRecords] = useState<Record<string, MaintenanceRecord[]>>({})
+  const [showRecordForm, setShowRecordForm] = useState<string | null>(null)
+  const [recordForm, setRecordForm] = useState({ finding: '', action: '', estimatedRecovery: '' })
+
+  useEffect(() => {
+    if (currentUser?.role === 'operator' && allStations.length > 0 && selected.size === 0) {
+      setSelected(new Set([allStations[0].stationId]))
+    }
+  }, [currentUser, allStations, selected.size])
 
   const filtered = useMemo(() => {
     return allStations.filter((s) => {

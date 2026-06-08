@@ -119,6 +119,10 @@ const CITY_DISTRICT_NAMES: Record<string, string[]> = {
 const _districtsCache: Record<string, DistrictData[]> = {}
 export function getDistrictsForCity(cityId: string): DistrictData[] {
   if (_districtsCache[cityId]) return _districtsCache[cityId]
+  if (districtsData[cityId]) {
+    _districtsCache[cityId] = districtsData[cityId]
+    return districtsData[cityId]
+  }
   const names = CITY_DISTRICT_NAMES[cityId]
   if (!names) return []
   const city = cityHeatData.find((c) => c.cityId === cityId)
@@ -130,6 +134,10 @@ export function getDistrictsForCity(cityId: string): DistrictData[] {
 const _stationsCache: Record<string, HeatStation[]> = {}
 export function getStationsForDistrict(districtId: string, district: DistrictData): HeatStation[] {
   if (_stationsCache[districtId]) return _stationsCache[districtId]
+  if (heatStationsData[districtId]) {
+    _stationsCache[districtId] = heatStationsData[districtId]
+    return heatStationsData[districtId]
+  }
   const count = 3 + Math.floor(Math.random() * 4)
   const stations = genStations(district, count)
   _stationsCache[districtId] = stations
