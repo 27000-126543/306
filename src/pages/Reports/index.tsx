@@ -133,7 +133,7 @@ export default function Reports() {
       </div>
 
       <div className="text-xs text-[#94A3B8]">
-        报告口径: {region} | 生成时间: {generatedAt || '尚未生成'}
+        报告口径: {safeRegion} | 生成时间: {generatedAt || '尚未生成'}
       </div>
 
       <div className="grid grid-cols-4 gap-4">
