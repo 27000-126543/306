@@ -7,10 +7,25 @@ import { useAppStore, filterCitiesByRole } from '@/store'
 const allRegions = [
   { name: '全国', cityId: '' },
   { name: '北京', cityId: 'beijing' },
+  { name: '天津', cityId: 'tianjin' },
+  { name: '唐山', cityId: 'tangshan' },
+  { name: '石家庄', cityId: 'shijiazhuang' },
+  { name: '太原', cityId: 'taiyuan' },
   { name: '哈尔滨', cityId: 'harbin' },
+  { name: '长春', cityId: 'changchun' },
   { name: '沈阳', cityId: 'shenyang' },
+  { name: '呼和浩特', cityId: 'huhehaote' },
+  { name: '乌鲁木齐', cityId: 'urumqi' },
+  { name: '济南', cityId: 'jinan' },
+  { name: '郑州', cityId: 'zhengzhou' },
+  { name: '西安', cityId: 'xian' },
   { name: '兰州', cityId: 'lanzhou' },
   { name: '西宁', cityId: 'xining' },
+  { name: '银川', cityId: 'yinchuan' },
+  { name: '大连', cityId: 'dalian' },
+  { name: '齐齐哈尔', cityId: 'qiqihaer' },
+  { name: '吉林', cityId: 'jilin' },
+  { name: '包头', cityId: 'baotou' },
 ]
 const weeks = ['2026年第23周 (6.1-6.7)', '2026年第22周 (5.25-5.31)', '2026年第21周 (5.18-5.24)']
 
@@ -30,12 +45,15 @@ export default function Reports() {
   const visibleRegions = useMemo(() => {
     if (!currentUser) return allRegions.map((r) => r.name)
     if (currentUser.role === 'headquarters') return allRegions.map((r) => r.name)
-    const filtered = filterCitiesByRole(allRegions.filter((r) => r.cityId !== ''), currentUser.role)
+    const cityRegions = allRegions.filter((r) => r.cityId !== '')
+    const filtered = filterCitiesByRole(cityRegions, currentUser.role)
     return filtered.map((r: { name: string }) => r.name)
   }, [currentUser])
 
+  const safeRegion = visibleRegions.includes(region) ? region : visibleRegions[0] || '北京'
+
   const handleGenerate = () => {
-    const data = generateReportForRegion(region, week)
+    const data = generateReportForRegion(safeRegion, week)
     setReportData(data)
     setGeneratedAt(new Date().toLocaleString('zh-CN'))
   }
@@ -96,7 +114,7 @@ export default function Reports() {
         <div className="flex items-center gap-3">
           <FileText className="w-6 h-6 text-[#F97316]" />
           <h1 className="text-xl font-bold text-white">运行诊断报告</h1>
-          <span className="text-xs text-[#94A3B8]">{report.weekStart} ~ {report.weekEnd} · {region}</span>
+          <span className="text-xs text-[#94A3B8]">{report.weekStart} ~ {report.weekEnd} · {safeRegion}</span>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 bg-[#1E293B] border border-[#334155] rounded-lg px-3 py-2">

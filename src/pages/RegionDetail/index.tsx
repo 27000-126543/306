@@ -188,7 +188,7 @@ export default function RegionDetail() {
                 <select value={districtFilter} onChange={(e) => setDistrictFilter(e.target.value)}
                   className="px-2 py-1 text-xs bg-[#0F172A] border border-[#334155] rounded text-[#94A3B8] outline-none">
                   <option value="all">全部区县</option>
-                  {districts.map((d) => <option key={d.districtId} value={d.districtId}>{d.districtName}</option>)}
+                  {visibleDistricts.map((d) => <option key={d.districtId} value={d.districtId}>{d.districtName}</option>)}
                 </select>
               </div>
             </div>
