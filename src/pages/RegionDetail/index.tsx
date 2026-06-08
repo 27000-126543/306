@@ -136,6 +136,28 @@ export default function RegionDetail() {
     }
   }, [boxPlotData])
 
+  const handleSubmitRecord = (stationId: string) => {
+    if (!recordForm.finding && !recordForm.action) return
+    const station = allStations.find((s) => s.stationId === stationId)
+    if (!station) return
+    const record: MaintenanceRecord = {
+      id: `mr_${Date.now()}`,
+      stationId,
+      stationName: station.stationName,
+      finding: recordForm.finding,
+      action: recordForm.action,
+      estimatedRecovery: recordForm.estimatedRecovery,
+      operator: currentUser?.name || '',
+      timestamp: new Date().toLocaleString('zh-CN'),
+    }
+    setMaintenanceRecords((prev) => ({
+      ...prev,
+      [stationId]: [...(prev[stationId] || []), record],
+    }))
+    setRecordForm({ finding: '', action: '', estimatedRecovery: '' })
+    setShowRecordForm(null)
+  }
+
   return (
     <div className="min-h-screen bg-[#0F172A] p-4 space-y-4">
       <div className="flex items-center gap-3">
@@ -214,6 +236,7 @@ export default function RegionDetail() {
                     <th className="py-2 px-3 text-right font-normal">压力MPa</th>
                     <th className="py-2 px-3 text-right font-normal">达标率%</th>
                     <th className="py-2 px-3 text-center font-normal">状态</th>
+                    <th className="py-2 px-3 text-center font-normal">操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -231,12 +254,90 @@ export default function RegionDetail() {
                           {statusMap[s.status].label}
                         </span>
                       </td>
+                      <td className="py-2 px-3 text-center">
+                        <button onClick={(e) => { e.stopPropagation(); setShowRecordForm(s.stationId) }}
+                          className="text-[#F97316] hover:text-[#EA580C] text-[10px] flex items-center gap-1 mx-auto">
+                          <Wrench className="w-3 h-3" />处置
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+
+            {showRecordForm && (
+              <div className="mt-4 border border-[#334155] rounded-lg p-4 bg-[#0F172A]/60">
+                <div className="flex items-center gap-2 mb-3">
+                  <Wrench className="w-4 h-4 text-[#F97316]" />
+                  <span className="text-xs text-[#F1F5F9] font-medium">登记运维处置 — {allStations.find(s => s.stationId === showRecordForm)?.stationName}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] text-[#94A3B8] mb-1 block">排查结果</label>
+                    <input value={recordForm.finding} onChange={(e) => setRecordForm({ ...recordForm, finding: e.target.value })}
+                      placeholder="如：供水温度偏低，疑似管道堵塞"
+                      className="w-full text-xs bg-[#1E293B] border border-[#334155] rounded px-3 py-2 text-white placeholder-[#64748B] outline-none focus:border-[#F97316]" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-[#94A3B8] mb-1 block">处理措施</label>
+                    <input value={recordForm.action} onChange={(e) => setRecordForm({ ...recordForm, action: e.target.value })}
+                      placeholder="如：已通知抢修班组，正在疏通管道"
+                      className="w-full text-xs bg-[#1E293B] border border-[#334155] rounded px-3 py-2 text-white placeholder-[#64748B] outline-none focus:border-[#F97316]" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-[#94A3B8] mb-1 block">预计恢复时间</label>
+                    <input value={recordForm.estimatedRecovery} onChange={(e) => setRecordForm({ ...recordForm, estimatedRecovery: e.target.value })}
+                      placeholder="如：2小时内恢复"
+                      className="w-full text-xs bg-[#1E293B] border border-[#334155] rounded px-3 py-2 text-white placeholder-[#64748B] outline-none focus:border-[#F97316]" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-[#94A3B8] mb-1 block">现场照片</label>
+                    <div className="flex items-center gap-2 bg-[#1E293B] border border-[#334155] rounded px-3 py-2 text-[#64748B] text-xs cursor-pointer hover:border-[#475569]">
+                      <Camera className="w-3.5 h-3.5" />
+                      <span>点击上传（占位）</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 mt-3 justify-end">
+                  <button onClick={() => { setShowRecordForm(null); setRecordForm({ finding: '', action: '', estimatedRecovery: '' }) }}
+                    className="text-xs text-[#94A3B8] px-3 py-1.5 rounded hover:text-[#F1F5F9]">取消</button>
+                  <button onClick={() => handleSubmitRecord(showRecordForm)}
+                    className="flex items-center gap-1 text-xs bg-[#F97316] text-white px-4 py-1.5 rounded hover:bg-[#EA580C]">
+                    <Send className="w-3 h-3" />提交记录
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
+
+          {Array.from(selected).map((sid) => {
+            const records = maintenanceRecords[sid] || []
+            if (records.length === 0) return null
+            const station = allStations.find((s) => s.stationId === sid)
+            return (
+              <div key={`records-${sid}`} className="bg-[#1E293B] border border-[#334155] rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Wrench className="w-4 h-4 text-[#F97316]" />
+                  <span className="text-xs text-[#94A3B8]">{station?.stationName} — 运维处置记录</span>
+                </div>
+                <div className="space-y-2">
+                  {records.map((r) => (
+                    <div key={r.id} className="bg-[#0F172A]/60 border border-[#334155] rounded-lg p-3">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[10px] font-mono text-[#64748B]">{r.timestamp}</span>
+                        <span className="text-[10px] text-[#94A3B8]">|</span>
+                        <span className="text-[10px] text-[#F97316]">{r.operator}</span>
+                      </div>
+                      {r.finding && <div className="text-xs text-[#CBD5E1]"><span className="text-[#64748B]">排查：</span>{r.finding}</div>}
+                      {r.action && <div className="text-xs text-[#CBD5E1]"><span className="text-[#64748B]">措施：</span>{r.action}</div>}
+                      {r.estimatedRecovery && <div className="text-xs text-[#CBD5E1]"><span className="text-[#64748B]">预计恢复：</span>{r.estimatedRecovery}</div>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
 
           <div className="bg-[#1E293B] border border-[#334155] rounded-xl p-4">
             <div className="flex items-center gap-2 mb-3">

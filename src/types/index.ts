@@ -143,3 +143,14 @@ export interface ComplianceTrend {
   currentYear: number
   lastYear: number
 }
+
+export interface MaintenanceRecord {
+  id: string
+  stationId: string
+  stationName: string
+  finding: string
+  action: string
+  estimatedRecovery: string
+  operator: string
+  timestamp: string
+}
