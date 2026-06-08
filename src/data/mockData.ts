@@ -319,21 +319,38 @@ export function computePeakShavingPlans(maxGap: number): PeakShavingPlan[] {
   return plans
 }
 
-export function generateReportForRegion(region: string): { report: WeeklyReport; heatLoss: HeatLossReason[]; energyCost: EnergyCostItem[]; complianceTrend: ComplianceTrend[] } {
+function parseWeekDates(week: string): { start: string; end: string; num: number } {
+  const numMatch = week.match(/第(\d+)周/)
+  const num = numMatch ? parseInt(numMatch[1]) : 23
+  const dateMatch = week.match(/\((\d+)\.(\d+)-(\d+)\.(\d+)\)/)
+  if (dateMatch) {
+    const [, sm, sd, em, ed] = dateMatch
+    return {
+      start: `2026-${sm.padStart(2, '0')}-${sd.padStart(2, '0')}`,
+      end: `2026-${em.padStart(2, '0')}-${ed.padStart(2, '0')}`,
+      num,
+    }
+  }
+  return { start: '2026-06-01', end: '2026-06-07', num }
+}
+
+export function generateReportForRegion(region: string, week?: string): { report: WeeklyReport; heatLoss: HeatLossReason[]; energyCost: EnergyCostItem[]; complianceTrend: ComplianceTrend[] } {
+  const { start: weekStart, end: weekEnd, num: weekNum } = parseWeekDates(week || '')
   const regionFactor = region === '全国' ? 1 : 0.3 + Math.random() * 0.5
+  const seasonFactor = 1 + (23 - weekNum) * 0.06
   const report: WeeklyReport = {
-    reportId: `r_${region}_w23`,
-    weekStart: '2026-06-01',
-    weekEnd: '2026-06-07',
+    reportId: `r_${region}_w${weekNum}`,
+    weekStart,
+    weekEnd,
     region,
-    complianceRate: +(88 + Math.random() * 10).toFixed(1),
+    complianceRate: +Math.max(80, 88 + Math.random() * 10 - (seasonFactor - 1) * 20).toFixed(1),
     complianceYoY: +(Math.random() * 4).toFixed(1),
     complianceMoM: +(-2 + Math.random() * 3).toFixed(1),
-    heatLossRate: +(5 + Math.random() * 5).toFixed(1),
-    energyCost: Math.round(2000 * regionFactor + Math.random() * 1000),
+    heatLossRate: +Math.min(15, 5 + Math.random() * 5 * seasonFactor).toFixed(1),
+    energyCost: Math.round((2000 * regionFactor + Math.random() * 1000) * seasonFactor),
     energyCostYoY: +(-5 + Math.random() * 4).toFixed(1),
-    totalComplaints: Math.round(800 * regionFactor + Math.random() * 500),
-    resolvedComplaints: Math.round(700 * regionFactor + Math.random() * 400),
+    totalComplaints: Math.round((800 * regionFactor + Math.random() * 500) * seasonFactor),
+    resolvedComplaints: Math.round((700 * regionFactor + Math.random() * 400) * seasonFactor),
   }
   report.resolvedComplaints = Math.min(report.resolvedComplaints, report.totalComplaints)
 
@@ -346,7 +363,7 @@ export function generateReportForRegion(region: string): { report: WeeklyReport;
     { reason: '其他原因', percentage: 5 },
   ]
 
-  const base = 2500 * regionFactor
+  const base = 2500 * regionFactor * seasonFactor
   const energyCost: EnergyCostItem[] = [
     { month: '1月', cost: Math.round(base * 1.3), unitAreaCost: +(base * 1.3 / 110).toFixed(1) },
     { month: '2月', cost: Math.round(base * 1.2), unitAreaCost: +(base * 1.2 / 110).toFixed(1) },
@@ -357,14 +374,15 @@ export function generateReportForRegion(region: string): { report: WeeklyReport;
     { month: '12月', cost: Math.round(base * 1.25), unitAreaCost: +(base * 1.25 / 110).toFixed(1) },
   ]
 
+  const sf = seasonFactor
   const complianceTrend: ComplianceTrend[] = [
-    { month: '1月', currentYear: +(90 + Math.random() * 5).toFixed(1), lastYear: +(88 + Math.random() * 4).toFixed(1) },
-    { month: '2月', currentYear: +(91 + Math.random() * 5).toFixed(1), lastYear: +(89 + Math.random() * 4).toFixed(1) },
-    { month: '3月', currentYear: +(92 + Math.random() * 5).toFixed(1), lastYear: +(90 + Math.random() * 4).toFixed(1) },
-    { month: '4月', currentYear: +(93 + Math.random() * 4).toFixed(1), lastYear: +(91 + Math.random() * 4).toFixed(1) },
-    { month: '10月', currentYear: +(89 + Math.random() * 5).toFixed(1), lastYear: +(87 + Math.random() * 4).toFixed(1) },
-    { month: '11月', currentYear: +(90 + Math.random() * 5).toFixed(1), lastYear: +(88 + Math.random() * 4).toFixed(1) },
-    { month: '12月', currentYear: +(90 + Math.random() * 5).toFixed(1), lastYear: +(88 + Math.random() * 4).toFixed(1) },
+    { month: '1月', currentYear: +(90 + Math.random() * 5 - (sf - 1) * 10).toFixed(1), lastYear: +(88 + Math.random() * 4).toFixed(1) },
+    { month: '2月', currentYear: +(91 + Math.random() * 5 - (sf - 1) * 8).toFixed(1), lastYear: +(89 + Math.random() * 4).toFixed(1) },
+    { month: '3月', currentYear: +(92 + Math.random() * 5 - (sf - 1) * 6).toFixed(1), lastYear: +(90 + Math.random() * 4).toFixed(1) },
+    { month: '4月', currentYear: +(93 + Math.random() * 4 - (sf - 1) * 4).toFixed(1), lastYear: +(91 + Math.random() * 4).toFixed(1) },
+    { month: '10月', currentYear: +(89 + Math.random() * 5 - (sf - 1) * 8).toFixed(1), lastYear: +(87 + Math.random() * 4).toFixed(1) },
+    { month: '11月', currentYear: +(90 + Math.random() * 5 - (sf - 1) * 6).toFixed(1), lastYear: +(88 + Math.random() * 4).toFixed(1) },
+    { month: '12月', currentYear: +(90 + Math.random() * 5 - (sf - 1) * 10).toFixed(1), lastYear: +(88 + Math.random() * 4).toFixed(1) },
   ]
 
   return { report, heatLoss, energyCost, complianceTrend }

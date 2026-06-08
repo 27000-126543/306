@@ -262,7 +262,7 @@ export default function Dashboard() {
           </div>
         </div>
         <div className="space-y-2">
-          {alerts.slice(0, 5).map((alert) => {
+          {visibleAlerts.slice(0, 5).map((alert) => {
             const levelColor = alert.level === 3 ? '#EF4444' : alert.level === 2 ? '#F97316' : '#F59E0B'
             const levelBg = alert.level === 3 ? 'bg-[#EF4444]/10' : alert.level === 2 ? 'bg-[#F97316]/10' : 'bg-[#F59E0B]/10'
             return (

@@ -35,7 +35,7 @@ export default function Reports() {
   }, [currentUser])
 
   const handleGenerate = () => {
-    const data = generateReportForRegion(region)
+    const data = generateReportForRegion(region, week)
     setReportData(data)
     setGeneratedAt(new Date().toLocaleString('zh-CN'))
   }
