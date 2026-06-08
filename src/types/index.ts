@@ -144,13 +144,29 @@ export interface ComplianceTrend {
   lastYear: number
 }
 
-export interface MaintenanceRecord {
+export type WorkOrderStatus = 'pending_inspect' | 'in_progress' | 'pending_review' | 'recovered'
+
+export interface WorkOrderProgress {
+  id: string
+  content: string
+  operator: string
+  timestamp: string
+}
+
+export interface WorkOrder {
   id: string
   stationId: string
   stationName: string
+  alertId?: string
+  alertLevel?: AlertLevel
+  alertDesc?: string
   finding: string
   action: string
   estimatedRecovery: string
+  status: WorkOrderStatus
   operator: string
-  timestamp: string
+  assignee: string
+  createdAt: string
+  updatedAt: string
+  progress: WorkOrderProgress[]
 }

@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { useMemo } from 'react'
-import type { UserRole, UserInfo, Alert, AlertStatus } from '@/types'
+import type { UserRole, UserInfo, Alert, AlertStatus, WorkOrder, WorkOrderStatus } from '@/types'
 import { alertsData as initialAlerts } from '@/data/mockData'
 
 export const ROLE_REGION_MAP: Record<UserRole, { region: string; cityIds: string[] }> = {
@@ -22,11 +22,17 @@ interface AppState {
   currentCityId: string | null
   sidebarCollapsed: boolean
   alerts: Alert[]
+  workOrders: WorkOrder[]
   login: (user: UserInfo) => void
   logout: () => void
   setCurrentCityId: (cityId: string | null) => void
   toggleSidebar: () => void
   advanceAlert: (alertId: string) => void
+  createWorkOrder: (wo: Omit<WorkOrder, 'id' | 'createdAt' | 'updatedAt' | 'progress'>) => string
+  updateWorkOrderStatus: (woId: string, status: WorkOrderStatus) => void
+  addWorkOrderProgress: (woId: string, content: string) => void
+  getWorkOrdersByStation: (stationId: string) => WorkOrder[]
+  getWorkOrdersByAlert: (alertId: string) => WorkOrder[]
   getVisibleCityIds: () => string[]
   getVisibleAlerts: () => Alert[]
 }
@@ -43,6 +49,7 @@ export const useAppStore = create<AppState>()(
       currentCityId: null,
       sidebarCollapsed: false,
       alerts: JSON.parse(JSON.stringify(initialAlerts)),
+      workOrders: [],
 
       login: (user) => set({ currentUser: user }),
       logout: () => set({ currentUser: null }),
@@ -96,6 +103,48 @@ export const useAppStore = create<AppState>()(
         const mapping = ROLE_REGION_MAP[user.role]
         if (user.role === 'headquarters') return []
         return mapping.cityIds
+      },
+
+      createWorkOrder: (wo) => {
+        const id = `wo_${Date.now()}`
+        const now = nowStr()
+        const newWo: WorkOrder = { ...wo, id, createdAt: now, updatedAt: now, progress: [] }
+        set((state) => ({ workOrders: [...state.workOrders, newWo] }))
+        return id
+      },
+
+      updateWorkOrderStatus: (woId, status) => {
+        set((state) => ({
+          workOrders: state.workOrders.map((wo) =>
+            wo.id === woId ? { ...wo, status, updatedAt: nowStr() } : wo
+          ),
+        }))
+      },
+
+      addWorkOrderProgress: (woId, content) => {
+        const user = get().currentUser
+        set((state) => ({
+          workOrders: state.workOrders.map((wo) =>
+            wo.id === woId
+              ? {
+                  ...wo,
+                  updatedAt: nowStr(),
+                  progress: [
+                    ...wo.progress,
+                    { id: `wp_${Date.now()}`, content, operator: user?.name || '', timestamp: nowStr() },
+                  ],
+                }
+              : wo
+          ),
+        }))
+      },
+
+      getWorkOrdersByStation: (stationId) => {
+        return get().workOrders.filter((wo) => wo.stationId === stationId)
+      },
+
+      getWorkOrdersByAlert: (alertId) => {
+        return get().workOrders.filter((wo) => wo.alertId === alertId)
       },
 
       getVisibleAlerts: () => {

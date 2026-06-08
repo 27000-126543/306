@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
-import { AlertTriangle, AlertCircle, ThermometerSun, Gauge, Clock, CheckCircle, XCircle, ChevronRight, Filter, Search } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { AlertTriangle, AlertCircle, ThermometerSun, Gauge, Clock, CheckCircle, XCircle, ChevronRight, Filter, Search, Wrench } from 'lucide-react'
 import { useAppStore, useVisibleAlerts } from '@/store'
 import type { Alert, AlertLevel, AlertStatus } from '@/types'
 
@@ -60,7 +61,10 @@ function StatusBadge({ status }: { status: AlertStatus }) {
 }
 
 export default function Alerts() {
+  const navigate = useNavigate()
   const advanceAlert = useAppStore(s => s.advanceAlert)
+  const createWorkOrder = useAppStore(s => s.createWorkOrder)
+  const getWorkOrdersByAlert = useAppStore(s => s.getWorkOrdersByAlert)
   const visibleAlerts = useVisibleAlerts()
 
   const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null)
@@ -204,7 +208,57 @@ export default function Alerts() {
               {selectedAlert.status === 'confirmed' && <button onClick={() => advanceAlert(selectedAlertId!)} className="flex-1 bg-[#F97316] text-white text-xs py-2 rounded hover:bg-[#EA580C]">复核通过</button>}
               {selectedAlert.status === 'reviewed' && <button onClick={() => advanceAlert(selectedAlertId!)} className="flex-1 bg-[#22C55E] text-white text-xs py-2 rounded hover:bg-[#16A34A]">批准方案</button>}
               {selectedAlert.status === 'approved' && <button onClick={() => advanceAlert(selectedAlertId!)} className="flex-1 bg-[#64748B] text-white text-xs py-2 rounded hover:bg-[#475569]">标记解决</button>}
+              <button onClick={() => {
+                const woId = createWorkOrder({
+                  stationId: selectedAlert.stationName,
+                  stationName: selectedAlert.stationName,
+                  alertId: selectedAlert.alertId,
+                  alertLevel: selectedAlert.level,
+                  alertDesc: selectedAlert.description,
+                  finding: '',
+                  action: '',
+                  estimatedRecovery: '',
+                  status: 'pending_inspect',
+                  operator: '',
+                  assignee: selectedAlert.assignedTo,
+                })
+                navigate(`/dashboard/${selectedAlert.cityId}?station=${encodeURIComponent(selectedAlert.stationName)}&woId=${woId}`)
+              }} className="flex items-center gap-1 bg-[#3B82F6] text-white text-xs px-3 py-2 rounded hover:bg-[#2563EB]">
+                <Wrench className="w-3 h-3" />发起工单
+              </button>
             </div>
+            {getWorkOrdersByAlert(selectedAlert.alertId).length > 0 && (
+              <div className="border-t border-[#334155] pt-4 mt-4">
+                <div className="text-xs text-[#94A3B8] font-medium mb-2">关联处置工单</div>
+                {getWorkOrdersByAlert(selectedAlert.alertId).map((wo) => (
+                  <div key={wo.id} className="bg-[#0F172A] border border-[#334155] rounded-lg p-2 mb-2">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Wrench className="w-3 h-3 text-[#F97316]" />
+                      <span className="text-xs text-[#F1F5F9]">{wo.stationName}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                        wo.status === 'pending_inspect' ? 'bg-[#F59E0B]/10 text-[#F59E0B]' :
+                        wo.status === 'in_progress' ? 'bg-[#3B82F6]/10 text-[#3B82F6]' :
+                        wo.status === 'pending_review' ? 'bg-[#8B5CF6]/10 text-[#8B5CF6]' :
+                        'bg-[#22C55E]/10 text-[#22C55E]'
+                      }`}>
+                        {wo.status === 'pending_inspect' ? '待排查' : wo.status === 'in_progress' ? '处理中' : wo.status === 'pending_review' ? '待复核' : '已恢复'}
+                      </span>
+                    </div>
+                    {wo.finding && <div className="text-[10px] text-[#94A3B8]">排查: {wo.finding}</div>}
+                    {wo.action && <div className="text-[10px] text-[#94A3B8]">措施: {wo.action}</div>}
+                    {wo.progress.length > 0 && (
+                      <div className="mt-1 space-y-0.5">
+                        {wo.progress.map((p) => (
+                          <div key={p.id} className="text-[10px] text-[#64748B]">
+                            <span className="font-mono">{p.timestamp.slice(5,16)}</span> {p.operator}: {p.content}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

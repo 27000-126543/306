@@ -436,7 +436,7 @@ export function getAnomalyStationsForRegion(region: string, metric: 'compliance'
     .slice(0, 10)
 }
 
-const allRegionsCityMap: Record<string, string> = {
+export const allRegionsCityMap: Record<string, string> = {
   '全国': 'beijing',
   '北京': 'beijing',
   '天津': 'tianjin',

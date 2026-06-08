@@ -1,10 +1,10 @@
 import { useState, useMemo, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import ReactECharts from 'echarts-for-react'
-import { ArrowLeft, Search, Filter, ThermometerSun, BarChart3, Wrench, Camera, Send } from 'lucide-react'
+import { ArrowLeft, Search, Filter, ThermometerSun, BarChart3, Wrench, Camera, Send, Plus, RefreshCw, CheckCircle2 } from 'lucide-react'
 import { cityHeatData, cityHasDetail, getDistrictsForCity, getStationsForCity, getBoxPlotForCity, getTempHistoryForStation } from '@/data/mockData'
 import { useAppStore, ROLE_REGION_MAP } from '@/store'
-import type { MaintenanceRecord } from '@/types'
+import type { WorkOrder, WorkOrderStatus } from '@/types'
 
 const statusMap: Record<string, { label: string; bg: string }> = {
   normal: { label: '正常', bg: 'bg-green-500/20 text-green-400' },
@@ -12,10 +12,30 @@ const statusMap: Record<string, { label: string; bg: string }> = {
   error: { label: '故障', bg: 'bg-red-500/20 text-red-400' },
 }
 
+const WO_STATUS: Record<WorkOrderStatus, { label: string; color: string; bg: string }> = {
+  pending_inspect: { label: '待排查', color: '#F59E0B', bg: 'bg-[#F59E0B]/10' },
+  in_progress: { label: '处理中', color: '#3B82F6', bg: 'bg-[#3B82F6]/10' },
+  pending_review: { label: '待复核', color: '#8B5CF6', bg: 'bg-[#8B5CF6]/10' },
+  recovered: { label: '已恢复', color: '#22C55E', bg: 'bg-[#22C55E]/10' },
+}
+
+const NEXT_STATUS: Record<WorkOrderStatus, WorkOrderStatus> = {
+  pending_inspect: 'in_progress',
+  in_progress: 'pending_review',
+  pending_review: 'recovered',
+  recovered: 'recovered',
+}
+
 export default function RegionDetail() {
   const { cityId } = useParams<{ cityId: string }>()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const currentUser = useAppStore((s) => s.currentUser)
+  const workOrders = useAppStore((s) => s.workOrders)
+  const createWorkOrder = useAppStore((s) => s.createWorkOrder)
+  const updateWorkOrderStatus = useAppStore((s) => s.updateWorkOrderStatus)
+  const addWorkOrderProgress = useAppStore((s) => s.addWorkOrderProgress)
+
   const id = cityId || 'beijing'
   const city = cityHeatData.find((c) => c.cityId === id) || cityHeatData.find((c) => c.cityId === 'beijing')!
   const hasDetail = cityHasDetail(id)
@@ -51,15 +71,30 @@ export default function RegionDetail() {
   const [districtFilter, setDistrictFilter] = useState('all')
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
-  const [maintenanceRecords, setMaintenanceRecords] = useState<Record<string, MaintenanceRecord[]>>({})
-  const [showRecordForm, setShowRecordForm] = useState<string | null>(null)
-  const [recordForm, setRecordForm] = useState({ finding: '', action: '', estimatedRecovery: '' })
+  const [showFormFor, setShowFormFor] = useState<string | null>(null)
+  const [formFinding, setFormFinding] = useState('')
+  const [formAction, setFormAction] = useState('')
+  const [formEstRecovery, setFormEstRecovery] = useState('')
+  const [progressInput, setProgressInput] = useState<Record<string, string>>({})
+
+  const urlStation = searchParams.get('station')
+  const urlWoId = searchParams.get('woId')
 
   useEffect(() => {
     if (currentUser?.role === 'operator' && allStations.length > 0 && selected.size === 0) {
       setSelected(new Set([allStations[0].stationId]))
     }
   }, [currentUser, allStations, selected.size])
+
+  useEffect(() => {
+    if (urlStation && allStations.length > 0) {
+      const match = allStations.find(s => s.stationName === urlStation)
+      if (match) {
+        setSelected(new Set([match.stationId]))
+        if (urlWoId) setShowFormFor(match.stationId)
+      }
+    }
+  }, [urlStation, urlWoId, allStations])
 
   const filtered = useMemo(() => {
     return allStations.filter((s) => {
@@ -136,27 +171,27 @@ export default function RegionDetail() {
     }
   }, [boxPlotData])
 
-  const handleSubmitRecord = (stationId: string) => {
-    if (!recordForm.finding && !recordForm.action) return
+  const handleCreateWorkOrder = (stationId: string) => {
+    if (!formFinding && !formAction) return
     const station = allStations.find((s) => s.stationId === stationId)
     if (!station) return
-    const record: MaintenanceRecord = {
-      id: `mr_${Date.now()}`,
+    createWorkOrder({
       stationId,
       stationName: station.stationName,
-      finding: recordForm.finding,
-      action: recordForm.action,
-      estimatedRecovery: recordForm.estimatedRecovery,
+      finding: formFinding,
+      action: formAction,
+      estimatedRecovery: formEstRecovery,
+      status: 'pending_inspect',
       operator: currentUser?.name || '',
-      timestamp: new Date().toLocaleString('zh-CN'),
-    }
-    setMaintenanceRecords((prev) => ({
-      ...prev,
-      [stationId]: [...(prev[stationId] || []), record],
-    }))
-    setRecordForm({ finding: '', action: '', estimatedRecovery: '' })
-    setShowRecordForm(null)
+      assignee: currentUser?.name || '',
+    })
+    setFormFinding('')
+    setFormAction('')
+    setFormEstRecovery('')
+    setShowFormFor(null)
   }
+
+  const stationWorkOrders = (sid: string) => workOrders.filter((wo) => wo.stationId === sid)
 
   return (
     <div className="min-h-screen bg-[#0F172A] p-4 space-y-4">
@@ -183,7 +218,6 @@ export default function RegionDetail() {
                 </div>
                 <ReactECharts option={kpiOption} style={{ height: 260 }} />
               </div>
-
               {boxPlotData.length > 0 ? (
                 <div className="bg-[#1E293B] border border-[#334155] rounded-xl p-4">
                   <div className="flex items-center gap-2 mb-3">
@@ -236,58 +270,61 @@ export default function RegionDetail() {
                     <th className="py-2 px-3 text-right font-normal">压力MPa</th>
                     <th className="py-2 px-3 text-right font-normal">达标率%</th>
                     <th className="py-2 px-3 text-center font-normal">状态</th>
-                    <th className="py-2 px-3 text-center font-normal">操作</th>
+                    <th className="py-2 px-3 text-center font-normal">工单</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((s) => (
-                    <tr key={s.stationId} onClick={() => toggleStation(s.stationId)}
-                      className={`border-b border-[#334155]/50 cursor-pointer hover:bg-[#334155]/30 ${selected.has(s.stationId) ? 'border-l-2 border-l-[#F97316]' : 'border-l-2 border-l-transparent'}`}>
-                      <td className="py-2 px-3 text-white">{s.stationName}</td>
-                      <td className="py-2 px-3 text-[#94A3B8]">{s.districtName}</td>
-                      <td className="py-2 px-3 text-right font-mono text-white">{s.supplyTemp}</td>
-                      <td className="py-2 px-3 text-right font-mono text-white">{s.returnTemp}</td>
-                      <td className="py-2 px-3 text-right font-mono text-white">{s.pressure}</td>
-                      <td className="py-2 px-3 text-right font-mono text-white">{s.complianceRate}</td>
-                      <td className="py-2 px-3 text-center">
-                        <span className={`px-2 py-0.5 rounded text-[10px] ${statusMap[s.status].bg}`}>
-                          {statusMap[s.status].label}
-                        </span>
-                      </td>
-                      <td className="py-2 px-3 text-center">
-                        <button onClick={(e) => { e.stopPropagation(); setShowRecordForm(s.stationId) }}
-                          className="text-[#F97316] hover:text-[#EA580C] text-[10px] flex items-center gap-1 mx-auto">
-                          <Wrench className="w-3 h-3" />处置
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {filtered.map((s) => {
+                    const woCount = stationWorkOrders(s.stationId).length
+                    return (
+                      <tr key={s.stationId} onClick={() => toggleStation(s.stationId)}
+                        className={`border-b border-[#334155]/50 cursor-pointer hover:bg-[#334155]/30 ${selected.has(s.stationId) ? 'border-l-2 border-l-[#F97316]' : 'border-l-2 border-l-transparent'}`}>
+                        <td className="py-2 px-3 text-white">{s.stationName}</td>
+                        <td className="py-2 px-3 text-[#94A3B8]">{s.districtName}</td>
+                        <td className="py-2 px-3 text-right font-mono text-white">{s.supplyTemp}</td>
+                        <td className="py-2 px-3 text-right font-mono text-white">{s.returnTemp}</td>
+                        <td className="py-2 px-3 text-right font-mono text-white">{s.pressure}</td>
+                        <td className="py-2 px-3 text-right font-mono text-white">{s.complianceRate}</td>
+                        <td className="py-2 px-3 text-center">
+                          <span className={`px-2 py-0.5 rounded text-[10px] ${statusMap[s.status].bg}`}>
+                            {statusMap[s.status].label}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3 text-center">
+                          <button onClick={(e) => { e.stopPropagation(); setShowFormFor(s.stationId) }}
+                            className="text-[#F97316] hover:text-[#EA580C] text-[10px] flex items-center gap-1 mx-auto">
+                            <Wrench className="w-3 h-3" />{woCount > 0 ? `${woCount}` : '处置'}
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
 
-            {showRecordForm && (
+            {showFormFor && (
               <div className="mt-4 border border-[#334155] rounded-lg p-4 bg-[#0F172A]/60">
                 <div className="flex items-center gap-2 mb-3">
                   <Wrench className="w-4 h-4 text-[#F97316]" />
-                  <span className="text-xs text-[#F1F5F9] font-medium">登记运维处置 — {allStations.find(s => s.stationId === showRecordForm)?.stationName}</span>
+                  <span className="text-xs text-[#F1F5F9] font-medium">登记处置工单 — {allStations.find(s => s.stationId === showFormFor)?.stationName}</span>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-[10px] text-[#94A3B8] mb-1 block">排查结果</label>
-                    <input value={recordForm.finding} onChange={(e) => setRecordForm({ ...recordForm, finding: e.target.value })}
+                    <input value={formFinding} onChange={(e) => setFormFinding(e.target.value)}
                       placeholder="如：供水温度偏低，疑似管道堵塞"
                       className="w-full text-xs bg-[#1E293B] border border-[#334155] rounded px-3 py-2 text-white placeholder-[#64748B] outline-none focus:border-[#F97316]" />
                   </div>
                   <div>
                     <label className="text-[10px] text-[#94A3B8] mb-1 block">处理措施</label>
-                    <input value={recordForm.action} onChange={(e) => setRecordForm({ ...recordForm, action: e.target.value })}
+                    <input value={formAction} onChange={(e) => setFormAction(e.target.value)}
                       placeholder="如：已通知抢修班组，正在疏通管道"
                       className="w-full text-xs bg-[#1E293B] border border-[#334155] rounded px-3 py-2 text-white placeholder-[#64748B] outline-none focus:border-[#F97316]" />
                   </div>
                   <div>
                     <label className="text-[10px] text-[#94A3B8] mb-1 block">预计恢复时间</label>
-                    <input value={recordForm.estimatedRecovery} onChange={(e) => setRecordForm({ ...recordForm, estimatedRecovery: e.target.value })}
+                    <input value={formEstRecovery} onChange={(e) => setFormEstRecovery(e.target.value)}
                       placeholder="如：2小时内恢复"
                       className="w-full text-xs bg-[#1E293B] border border-[#334155] rounded px-3 py-2 text-white placeholder-[#64748B] outline-none focus:border-[#F97316]" />
                   </div>
@@ -300,11 +337,11 @@ export default function RegionDetail() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 mt-3 justify-end">
-                  <button onClick={() => { setShowRecordForm(null); setRecordForm({ finding: '', action: '', estimatedRecovery: '' }) }}
+                  <button onClick={() => { setShowFormFor(null); setFormFinding(''); setFormAction(''); setFormEstRecovery('') }}
                     className="text-xs text-[#94A3B8] px-3 py-1.5 rounded hover:text-[#F1F5F9]">取消</button>
-                  <button onClick={() => handleSubmitRecord(showRecordForm)}
+                  <button onClick={() => handleCreateWorkOrder(showFormFor)}
                     className="flex items-center gap-1 text-xs bg-[#F97316] text-white px-4 py-1.5 rounded hover:bg-[#EA580C]">
-                    <Send className="w-3 h-3" />提交记录
+                    <Send className="w-3 h-3" />提交工单
                   </button>
                 </div>
               </div>
@@ -312,26 +349,66 @@ export default function RegionDetail() {
           </div>
 
           {Array.from(selected).map((sid) => {
-            const records = maintenanceRecords[sid] || []
-            if (records.length === 0) return null
+            const wos = stationWorkOrders(sid)
+            if (wos.length === 0) return null
             const station = allStations.find((s) => s.stationId === sid)
             return (
-              <div key={`records-${sid}`} className="bg-[#1E293B] border border-[#334155] rounded-xl p-4">
+              <div key={`wo-${sid}`} className="bg-[#1E293B] border border-[#334155] rounded-xl p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <Wrench className="w-4 h-4 text-[#F97316]" />
-                  <span className="text-xs text-[#94A3B8]">{station?.stationName} — 运维处置记录</span>
+                  <span className="text-xs text-[#94A3B8]">{station?.stationName} — 处置工单</span>
+                  <span className="text-[10px] text-[#64748B] ml-auto">{wos.length} 条</span>
                 </div>
-                <div className="space-y-2">
-                  {records.map((r) => (
-                    <div key={r.id} className="bg-[#0F172A]/60 border border-[#334155] rounded-lg p-3">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-[10px] font-mono text-[#64748B]">{r.timestamp}</span>
+                <div className="space-y-3">
+                  {wos.map((wo) => (
+                    <div key={wo.id} className="bg-[#0F172A]/60 border border-[#334155] rounded-lg p-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${WO_STATUS[wo.status].bg}`} style={{ color: WO_STATUS[wo.status].color }}>
+                          {WO_STATUS[wo.status].label}
+                        </span>
+                        <span className="text-[10px] font-mono text-[#64748B]">{wo.createdAt}</span>
                         <span className="text-[10px] text-[#94A3B8]">|</span>
-                        <span className="text-[10px] text-[#F97316]">{r.operator}</span>
+                        <span className="text-[10px] text-[#F97316]">{wo.assignee}</span>
+                        {wo.status !== 'recovered' && (
+                          <button onClick={() => updateWorkOrderStatus(wo.id, NEXT_STATUS[wo.status])}
+                            className="ml-auto text-[10px] text-[#3B82F6] hover:text-[#60A5FA] flex items-center gap-1">
+                            <RefreshCw className="w-3 h-3" />
+                            推进到{WO_STATUS[NEXT_STATUS[wo.status]].label}
+                          </button>
+                        )}
+                        {wo.status === 'recovered' && <CheckCircle2 className="w-3 h-3 text-[#22C55E] ml-auto" />}
                       </div>
-                      {r.finding && <div className="text-xs text-[#CBD5E1]"><span className="text-[#64748B]">排查：</span>{r.finding}</div>}
-                      {r.action && <div className="text-xs text-[#CBD5E1]"><span className="text-[#64748B]">措施：</span>{r.action}</div>}
-                      {r.estimatedRecovery && <div className="text-xs text-[#CBD5E1]"><span className="text-[#64748B]">预计恢复：</span>{r.estimatedRecovery}</div>}
+                      {wo.finding && <div className="text-xs text-[#CBD5E1]"><span className="text-[#64748B]">排查：</span>{wo.finding}</div>}
+                      {wo.action && <div className="text-xs text-[#CBD5E1]"><span className="text-[#64748B]">措施：</span>{wo.action}</div>}
+                      {wo.estimatedRecovery && <div className="text-xs text-[#CBD5E1]"><span className="text-[#64748B]">预计恢复：</span>{wo.estimatedRecovery}</div>}
+                      {wo.progress.length > 0 && (
+                        <div className="mt-2 border-t border-[#334155]/50 pt-2 space-y-1">
+                          {wo.progress.map((p) => (
+                            <div key={p.id} className="text-[10px] text-[#94A3B8]">
+                              <span className="font-mono text-[#64748B]">{p.timestamp.slice(5, 16)}</span>{' '}
+                              <span className="text-[#3B82F6]">{p.operator}</span>：{p.content}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div className="mt-2 flex items-center gap-2">
+                        <input
+                          value={progressInput[wo.id] || ''}
+                          onChange={(e) => setProgressInput({ ...progressInput, [wo.id]: e.target.value })}
+                          placeholder="补充处理进展..."
+                          className="flex-1 text-[10px] bg-[#1E293B] border border-[#334155] rounded px-2 py-1 text-white placeholder-[#64748B] outline-none focus:border-[#3B82F6]"
+                        />
+                        <button
+                          onClick={() => {
+                            if (progressInput[wo.id]?.trim()) {
+                              addWorkOrderProgress(wo.id, progressInput[wo.id].trim())
+                              setProgressInput({ ...progressInput, [wo.id]: '' })
+                            }
+                          }}
+                          className="text-[10px] text-[#3B82F6] hover:text-[#60A5FA] flex items-center gap-0.5">
+                          <Plus className="w-3 h-3" />补充
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
