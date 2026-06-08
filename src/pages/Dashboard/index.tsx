@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ReactECharts from 'echarts-for-react'
 import { Flame, Activity, TrendingDown, ThermometerSun, AlertTriangle } from 'lucide-react'
 import KPICard from '@/components/KPICard/KPICard'
-import { cityHeatData, complaintRanking, alertsData } from '@/data/mockData'
+import { cityHeatData } from '@/data/mockData'
+import { useAppStore, filterCitiesByRole } from '@/store'
 
 const qualityColors: Record<string, string> = {
   excellent: '#22C55E',
@@ -34,9 +35,38 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const [hoveredCity, setHoveredCity] = useState<string | null>(null)
 
-  const level1Count = alertsData.filter((a) => a.level === 1).length
-  const level2Count = alertsData.filter((a) => a.level === 2).length
-  const level3Count = alertsData.filter((a) => a.level === 3).length
+  const currentUser = useAppStore((s) => s.currentUser)
+  const alerts = useAppStore((s) => s.alerts)
+
+  const visibleCities = useMemo(
+    () => filterCitiesByRole(cityHeatData, currentUser?.role || 'headquarters'),
+    [currentUser?.role]
+  )
+
+  const ranking = useMemo(
+    () =>
+      visibleCities
+        .map((c) => ({ cityName: c.cityName, complaintRate: c.complaintRate }))
+        .sort((a, b) => b.complaintRate - a.complaintRate)
+        .slice(0, 10),
+    [visibleCities]
+  )
+
+  const kpiValues = useMemo(() => {
+    if (visibleCities.length === 0) {
+      return { totalHeatLoad: 0, avgEfficiency: 0, heatLossRate: 0, avgCompliance: 0 }
+    }
+    const totalHeatLoad = visibleCities.reduce((sum, c) => sum + c.heatLoad, 0)
+    const avgCompliance = visibleCities.reduce((sum, c) => sum + c.complianceRate, 0) / visibleCities.length
+    const avgComplaint = visibleCities.reduce((sum, c) => sum + c.complaintRate, 0) / visibleCities.length
+    const avgEfficiency = Math.max(0, avgCompliance - 5.2)
+    const heatLossRate = 7.5 + avgComplaint * 0.3
+    return { totalHeatLoad, avgEfficiency, heatLossRate, avgCompliance }
+  }, [visibleCities])
+
+  const level1Count = alerts.filter((a) => a.level === 1).length
+  const level2Count = alerts.filter((a) => a.level === 2).length
+  const level3Count = alerts.filter((a) => a.level === 3).length
 
   const complaintChartOption = {
     grid: { left: 80, right: 30, top: 10, bottom: 20 },
@@ -49,7 +79,7 @@ export default function Dashboard() {
     },
     yAxis: {
       type: 'category' as const,
-      data: complaintRanking.map((c) => c.cityName).reverse(),
+      data: ranking.map((c) => c.cityName).reverse(),
       axisLine: { show: false },
       axisTick: { show: false },
       axisLabel: { color: '#94A3B8', fontSize: 12 },
@@ -57,7 +87,7 @@ export default function Dashboard() {
     series: [
       {
         type: 'bar' as const,
-        data: complaintRanking.map((c) => c.complaintRate).reverse(),
+        data: ranking.map((c) => c.complaintRate).reverse(),
         barWidth: 14,
         itemStyle: {
           borderRadius: [0, 4, 4, 0],
@@ -90,7 +120,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         <KPICard
           title="总热负荷"
-          value="165,800"
+          value={kpiValues.totalHeatLoad.toLocaleString()}
           unit="MW"
           change={2.3}
           icon={<Flame className="w-5 h-5 text-[#F97316]" />}
@@ -99,7 +129,7 @@ export default function Dashboard() {
         />
         <KPICard
           title="平均供热效率"
-          value="87.6"
+          value={kpiValues.avgEfficiency.toFixed(1)}
           unit="%"
           change={1.2}
           icon={<Activity className="w-5 h-5 text-[#3B82F6]" />}
@@ -108,7 +138,7 @@ export default function Dashboard() {
         />
         <KPICard
           title="热损率"
-          value="7.5"
+          value={kpiValues.heatLossRate.toFixed(1)}
           unit="%"
           change={-0.8}
           icon={<TrendingDown className="w-5 h-5 text-[#22C55E]" />}
@@ -117,7 +147,7 @@ export default function Dashboard() {
         />
         <KPICard
           title="室温达标率"
-          value="92.3"
+          value={kpiValues.avgCompliance.toFixed(1)}
           unit="%"
           change={0.5}
           icon={<ThermometerSun className="w-5 h-5 text-[#F97316]" />}
@@ -144,7 +174,7 @@ export default function Dashboard() {
           </div>
           <div className="relative w-full" style={{ paddingBottom: '60%' }}>
             <div className="absolute inset-0 rounded-lg overflow-hidden bg-[#0F172A]/60 border border-[#1E293B]">
-              {cityHeatData.map((city) => {
+              {visibleCities.map((city) => {
                 const pos = lngLatToPosition(city.lng, city.lat)
                 const color = qualityColors[city.qualityLevel]
                 const isHovered = hoveredCity === city.cityId
@@ -232,7 +262,7 @@ export default function Dashboard() {
           </div>
         </div>
         <div className="space-y-2">
-          {alertsData.slice(0, 5).map((alert) => {
+          {alerts.slice(0, 5).map((alert) => {
             const levelColor = alert.level === 3 ? '#EF4444' : alert.level === 2 ? '#F97316' : '#F59E0B'
             const levelBg = alert.level === 3 ? 'bg-[#EF4444]/10' : alert.level === 2 ? 'bg-[#F97316]/10' : 'bg-[#F59E0B]/10'
             return (

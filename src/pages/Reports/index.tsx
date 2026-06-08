@@ -1,9 +1,17 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import ReactECharts from 'echarts-for-react'
 import { FileText, Download, Calendar, TrendingUp, Target, Lightbulb, BarChart3, PieChart } from 'lucide-react'
-import { weeklyReportData, heatLossReasons, energyCostData, complianceTrendData } from '@/data/mockData'
+import { generateReportForRegion } from '@/data/mockData'
+import { useAppStore, filterCitiesByRole } from '@/store'
 
-const regions = ['全国', '北京', '哈尔滨', '沈阳', '兰州', '西宁']
+const allRegions = [
+  { name: '全国', cityId: '' },
+  { name: '北京', cityId: 'beijing' },
+  { name: '哈尔滨', cityId: 'harbin' },
+  { name: '沈阳', cityId: 'shenyang' },
+  { name: '兰州', cityId: 'lanzhou' },
+  { name: '西宁', cityId: 'xining' },
+]
 const weeks = ['2026年第23周 (6.1-6.7)', '2026年第22周 (5.25-5.31)', '2026年第21周 (5.18-5.24)']
 
 const recommendations = [
@@ -13,18 +21,39 @@ const recommendations = [
 ]
 
 export default function Reports() {
+  const currentUser = useAppStore((s) => s.currentUser)
+  const [reportData, setReportData] = useState(() => generateReportForRegion('全国'))
+  const [generatedAt, setGeneratedAt] = useState<string>('')
   const [week, setWeek] = useState(weeks[0])
   const [region, setRegion] = useState('全国')
+
+  const visibleRegions = useMemo(() => {
+    if (!currentUser) return allRegions.map((r) => r.name)
+    if (currentUser.role === 'headquarters') return allRegions.map((r) => r.name)
+    const filtered = filterCitiesByRole(allRegions.filter((r) => r.cityId !== ''), currentUser.role)
+    return filtered.map((r: { name: string }) => r.name)
+  }, [currentUser])
+
+  const handleGenerate = () => {
+    const data = generateReportForRegion(region)
+    setReportData(data)
+    setGeneratedAt(new Date().toLocaleString('zh-CN'))
+  }
+
+  const report = reportData.report
+  const complianceTrend = reportData.complianceTrend
+  const heatLoss = reportData.heatLoss
+  const energyCost = reportData.energyCost
 
   const complianceOption = {
     tooltip: { trigger: 'axis', formatter: (params: any) => params.map((p: any) => `${p.seriesName}: ${p.value}%`).join('<br/>') },
     legend: { data: ['本年度', '上年度'], top: 0, textStyle: { color: '#94A3B8', fontSize: 12 } },
     grid: { left: 40, right: 20, top: 40, bottom: 30 },
-    xAxis: { type: 'category', data: complianceTrendData.map(d => d.month), axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94A3B8' } },
+    xAxis: { type: 'category', data: complianceTrend.map(d => d.month), axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94A3B8' } },
     yAxis: { type: 'value', min: 88, axisLine: { show: false }, splitLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94A3B8', formatter: '{value}%' } },
     series: [
-      { name: '本年度', type: 'line', smooth: true, data: complianceTrendData.map(d => d.currentYear), itemStyle: { color: '#F97316' }, lineStyle: { width: 2 } },
-      { name: '上年度', type: 'line', smooth: true, data: complianceTrendData.map(d => d.lastYear), itemStyle: { color: '#3B82F6' }, lineStyle: { width: 2 } },
+      { name: '本年度', type: 'line', smooth: true, data: complianceTrend.map(d => d.currentYear), itemStyle: { color: '#F97316' }, lineStyle: { width: 2 } },
+      { name: '上年度', type: 'line', smooth: true, data: complianceTrend.map(d => d.lastYear), itemStyle: { color: '#3B82F6' }, lineStyle: { width: 2 } },
     ],
   }
 
@@ -35,7 +64,7 @@ export default function Reports() {
     series: [{
       type: 'pie', radius: ['40%', '70%'], center: ['50%', '50%'],
       label: { color: '#94A3B8', formatter: '{b} {d}%' },
-      data: heatLossReasons.map(d => ({ name: d.reason, value: d.percentage })),
+      data: heatLoss.map(d => ({ name: d.reason, value: d.percentage })),
     }],
   }
 
@@ -43,22 +72,22 @@ export default function Reports() {
     tooltip: { trigger: 'axis' },
     legend: { data: ['总费用', '单位面积费用'], top: 0, textStyle: { color: '#94A3B8', fontSize: 12 } },
     grid: { left: 50, right: 50, top: 40, bottom: 30 },
-    xAxis: { type: 'category', data: energyCostData.map(d => d.month), axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94A3B8' } },
+    xAxis: { type: 'category', data: energyCost.map(d => d.month), axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94A3B8' } },
     yAxis: [
       { type: 'value', name: '万元', axisLine: { show: false }, splitLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94A3B8' }, nameTextStyle: { color: '#94A3B8' } },
       { type: 'value', name: '元/m²', axisLine: { show: false }, splitLine: { show: false }, axisLabel: { color: '#94A3B8' }, nameTextStyle: { color: '#94A3B8' } },
     ],
     series: [
-      { name: '总费用', type: 'bar', data: energyCostData.map(d => d.cost), itemStyle: { color: '#F97316', borderRadius: [4, 4, 0, 0] }, barWidth: 24 },
-      { name: '单位面积费用', type: 'line', yAxisIndex: 1, smooth: true, data: energyCostData.map(d => d.unitAreaCost), itemStyle: { color: '#3B82F6' }, lineStyle: { width: 2 } },
+      { name: '总费用', type: 'bar', data: energyCost.map(d => d.cost), itemStyle: { color: '#F97316', borderRadius: [4, 4, 0, 0] }, barWidth: 24 },
+      { name: '单位面积费用', type: 'line', yAxisIndex: 1, smooth: true, data: energyCost.map(d => d.unitAreaCost), itemStyle: { color: '#3B82F6' }, lineStyle: { width: 2 } },
     ],
   }
 
   const summaryCards = [
-    { label: '室温达标率', value: `${weeklyReportData.complianceRate}%`, sub: `同比 +${weeklyReportData.complianceYoY}%  环比 ${weeklyReportData.complianceMoM}%`, icon: Target, accent: '#F97316' },
-    { label: '热损耗率', value: `${weeklyReportData.heatLossRate}%`, sub: '较上期下降0.3%', icon: TrendingUp, accent: '#3B82F6' },
-    { label: '能耗成本', value: `${weeklyReportData.energyCost}万元`, sub: `同比 ${weeklyReportData.energyCostYoY}%`, icon: BarChart3, accent: '#22C55E' },
-    { label: '投诉处理', value: `${weeklyReportData.resolvedComplaints}/${weeklyReportData.totalComplaints}`, sub: `解决率 ${((weeklyReportData.resolvedComplaints / weeklyReportData.totalComplaints) * 100).toFixed(1)}%`, icon: PieChart, accent: '#F59E0B' },
+    { label: '室温达标率', value: `${report.complianceRate}%`, sub: `同比 +${report.complianceYoY}%  环比 ${report.complianceMoM}%`, icon: Target, accent: '#F97316' },
+    { label: '热损耗率', value: `${report.heatLossRate}%`, sub: '较上期下降0.3%', icon: TrendingUp, accent: '#3B82F6' },
+    { label: '能耗成本', value: `${report.energyCost}万元`, sub: `同比 ${report.energyCostYoY}%`, icon: BarChart3, accent: '#22C55E' },
+    { label: '投诉处理', value: `${report.resolvedComplaints}/${report.totalComplaints}`, sub: `解决率 ${((report.resolvedComplaints / report.totalComplaints) * 100).toFixed(1)}%`, icon: PieChart, accent: '#F59E0B' },
   ]
 
   return (
@@ -67,7 +96,7 @@ export default function Reports() {
         <div className="flex items-center gap-3">
           <FileText className="w-6 h-6 text-[#F97316]" />
           <h1 className="text-xl font-bold text-white">运行诊断报告</h1>
-          <span className="text-xs text-[#94A3B8]">{weeklyReportData.weekStart} ~ {weeklyReportData.weekEnd} · {region}</span>
+          <span className="text-xs text-[#94A3B8]">{report.weekStart} ~ {report.weekEnd} · {region}</span>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 bg-[#1E293B] border border-[#334155] rounded-lg px-3 py-2">
@@ -77,12 +106,16 @@ export default function Reports() {
             </select>
           </div>
           <select value={region} onChange={e => setRegion(e.target.value)} className="bg-[#1E293B] border border-[#334155] rounded-lg px-3 py-2 text-sm text-[#94A3B8] outline-none cursor-pointer">
-            {regions.map(r => <option key={r} value={r} className="bg-[#1E293B]">{r}</option>)}
+            {visibleRegions.map(r => <option key={r} value={r} className="bg-[#1E293B]">{r}</option>)}
           </select>
-          <button className="flex items-center gap-2 bg-[#F97316] hover:bg-[#EA580C] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+          <button onClick={handleGenerate} className="flex items-center gap-2 bg-[#F97316] hover:bg-[#EA580C] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
             <Download className="w-4 h-4" />生成报告
           </button>
         </div>
+      </div>
+
+      <div className="text-xs text-[#94A3B8]">
+        报告口径: {region} | 生成时间: {generatedAt || '尚未生成'}
       </div>
 
       <div className="grid grid-cols-4 gap-4">

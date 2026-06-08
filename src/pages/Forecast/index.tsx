@@ -1,11 +1,12 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import ReactECharts from 'echarts-for-react'
 import { read } from 'xlsx'
 import {
   Upload, Cloud, FileSpreadsheet, Zap, TrendingUp,
   CheckCircle, CloudSnow, Wind,
 } from 'lucide-react'
-import { forecastData, peakShavingPlans } from '@/data/mockData'
+import { generateDynamicForecast, computePeakShavingPlans } from '@/data/mockData'
+import type { ForecastDataPoint } from '@/types'
 
 export default function Forecast() {
   const [weatherFile, setWeatherFile] = useState<string | null>(null)
@@ -13,12 +14,28 @@ export default function Forecast() {
   const [holidayPlan, setHolidayPlan] = useState<string>('')
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null)
 
-  const exceedsCapacity = useMemo(() => forecastData.some((d) => d.predictedLoad > d.capacity), [])
+  const [forecastPoints, setForecastPoints] = useState<ForecastDataPoint[]>(generateDynamicForecast())
+  const [parsedTemps, setParsedTemps] = useState<number[]>([])
+  const [hasColdSnap, setHasColdSnap] = useState(false)
+  const [holidayBoost, setHolidayBoost] = useState(0)
+
+  useEffect(() => {
+    const newForecast = generateDynamicForecast(
+      parsedTemps.length > 0 ? parsedTemps : undefined,
+      hasColdSnap,
+      holidayBoost > 0 ? holidayBoost : undefined
+    )
+    setForecastPoints(newForecast)
+  }, [parsedTemps, hasColdSnap, holidayBoost])
+
+  const maxGap = useMemo(() => Math.max(0, ...forecastPoints.map(d => d.predictedLoad - d.capacity)), [forecastPoints])
+  const plans = useMemo(() => computePeakShavingPlans(maxGap), [maxGap])
+  const exceedsCapacity = maxGap > 0
 
   const markAreas = useMemo(() => {
     const ranges: { xAxis: number }[] = []
     let inRange = false
-    forecastData.forEach((d, i) => {
+    forecastPoints.forEach((d, i) => {
       if (d.predictedLoad > d.capacity && !inRange) {
         ranges.push({ xAxis: i })
         inRange = true
@@ -27,13 +44,13 @@ export default function Forecast() {
         inRange = false
       }
     })
-    if (inRange) ranges.push({ xAxis: forecastData.length - 1 })
+    if (inRange) ranges.push({ xAxis: forecastPoints.length - 1 })
     const result: [number, number][] = []
     for (let i = 0; i < ranges.length; i += 2) {
       if (i + 1 < ranges.length) result.push([ranges[i].xAxis, ranges[i + 1].xAxis])
     }
     return result
-  }, [])
+  }, [forecastPoints])
 
   const chartOption = useMemo(
     () => ({
@@ -52,7 +69,7 @@ export default function Forecast() {
       grid: { left: 60, right: 60, top: 40, bottom: 30 },
       xAxis: {
         type: 'category' as const,
-        data: forecastData.map((d) => d.timestamp),
+        data: forecastPoints.map((d) => d.timestamp),
         axisLine: { lineStyle: { color: '#334155' } },
         axisLabel: {
           color: '#94A3B8',
@@ -83,7 +100,7 @@ export default function Forecast() {
         {
           name: '预测负荷',
           type: 'line' as const,
-          data: forecastData.map((d) => d.predictedLoad),
+          data: forecastPoints.map((d) => d.predictedLoad),
           lineStyle: { color: '#F97316', width: 2 },
           itemStyle: { color: '#F97316' },
           areaStyle: {
@@ -107,7 +124,7 @@ export default function Forecast() {
         {
           name: '容量上限',
           type: 'line' as const,
-          data: forecastData.map((d) => d.capacity),
+          data: forecastPoints.map((d) => d.capacity),
           lineStyle: { color: '#EF4444', width: 2, type: 'dashed' as const },
           itemStyle: { color: '#EF4444' },
           symbol: 'none',
@@ -116,7 +133,7 @@ export default function Forecast() {
           name: '温度',
           type: 'line' as const,
           yAxisIndex: 1,
-          data: forecastData.map((d) => d.temperature),
+          data: forecastPoints.map((d) => d.temperature),
           lineStyle: { color: '#3B82F6', width: 2 },
           itemStyle: { color: '#3B82F6' },
           symbol: 'circle',
@@ -124,7 +141,7 @@ export default function Forecast() {
         },
       ],
     }),
-    [markAreas],
+    [markAreas, forecastPoints],
   )
 
   const handleWeatherUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -146,15 +163,23 @@ export default function Forecast() {
         ])
       }
       const temps = rows.map((r) => Number(r[1])).filter((t) => !isNaN(t))
+      setParsedTemps(temps)
+      const coldDetected = temps.some((t) => t < -15)
+      setHasColdSnap(coldDetected)
       setWeatherFile(file.name)
       setWeatherSummary({
         tempRange: temps.length
           ? `${Math.min(...temps).toFixed(1)}°C ~ ${Math.max(...temps).toFixed(1)}°C`
           : '无法解析',
-        coldSnap: temps.some((t) => t < -15),
+        coldSnap: coldDetected,
       })
     }
     reader.readAsBinaryString(file)
+  }
+
+  const handleHolidayPlanChange = (value: string) => {
+    setHolidayPlan(value)
+    setHolidayBoost(value.trim().length > 0 ? 1200 : 0)
   }
 
   return (
@@ -199,13 +224,13 @@ export default function Forecast() {
             <input
               type="text"
               value={holidayPlan}
-              onChange={(e) => setHolidayPlan(e.target.value)}
+              onChange={(e) => handleHolidayPlanChange(e.target.value)}
               placeholder="输入或上传活动计划"
               className="flex-1 bg-[#0F172A] border border-[#334155] rounded px-3 py-1.5 text-sm text-white placeholder-[#64748B] outline-none focus:border-[#F97316]"
             />
             <label className="px-3 py-1.5 bg-[#F97316] text-white text-sm rounded cursor-pointer hover:bg-[#EA580C] transition-colors">
               上传
-              <input type="file" className="hidden" onChange={(e) => { if (e.target.files?.[0]) setHolidayPlan(e.target.files[0].name) }} />
+              <input type="file" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleHolidayPlanChange(e.target.files[0].name) }} />
             </label>
           </div>
           {holidayPlan && (
@@ -220,7 +245,7 @@ export default function Forecast() {
           <div className="space-y-1">
             <p className="text-[#94A3B8] text-sm">当前天气</p>
             <div className="flex items-center gap-4 text-sm">
-              <span className="text-white font-mono">{forecastData[0].temperature}°C</span>
+              <span className="text-white font-mono">{forecastPoints[0].temperature}°C</span>
               <span className="text-[#94A3B8] flex items-center gap-1">
                 <Wind className="w-4 h-4" /> 3-4级
               </span>
@@ -252,7 +277,7 @@ export default function Forecast() {
             削峰方案推荐
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {peakShavingPlans.map((plan) => {
+            {plans.map((plan) => {
               const isSelected = selectedPlan === plan.planId
               return (
                 <div

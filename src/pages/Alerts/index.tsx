@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { AlertTriangle, AlertCircle, ThermometerSun, Gauge, Clock, CheckCircle, XCircle, ChevronRight, Filter, Search } from 'lucide-react'
-import { alertsData } from '@/data/mockData'
+import { useAppStore } from '@/store'
 import type { Alert, AlertLevel, AlertStatus } from '@/types'
 
 const LEVEL_CONFIG: Record<AlertLevel, { label: string; color: string; bg: string; icon: typeof AlertTriangle }> = {
@@ -60,13 +60,20 @@ function StatusBadge({ status }: { status: AlertStatus }) {
 }
 
 export default function Alerts() {
-  const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null)
+  const alerts = useAppStore(s => s.alerts)
+  const advanceAlert = useAppStore(s => s.advanceAlert)
+  const getVisibleAlerts = useAppStore(s => s.getVisibleAlerts)
+  const visibleAlerts = getVisibleAlerts()
+
+  const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null)
+  const selectedAlert = selectedAlertId ? alerts.find(a => a.alertId === selectedAlertId) || null : null
+
   const [levelFilter, setLevelFilter] = useState<string>('全部')
   const [typeFilter, setTypeFilter] = useState<string>('全部')
   const [statusFilter, setStatusFilter] = useState<string>('全部')
   const [search, setSearch] = useState('')
 
-  const filtered = alertsData.filter((a) => {
+  const filtered = visibleAlerts.filter((a) => {
     if (levelFilter !== '全部' && a.level !== Number(levelFilter)) return false
     if (typeFilter !== '全部' && a.type !== typeFilter) return false
     if (statusFilter !== '全部' && a.status !== statusFilter) return false
@@ -75,7 +82,7 @@ export default function Alerts() {
   })
 
   const counts = { 1: 0, 2: 0, 3: 0 } as Record<AlertLevel, number>
-  alertsData.forEach((a) => { counts[a.level]++ })
+  alerts.forEach((a) => { counts[a.level]++ })
 
   const Select = ({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: string[] }) => (
     <select value={value} onChange={(e) => onChange(e.target.value)}
@@ -122,9 +129,9 @@ export default function Alerts() {
           {filtered.map((alert) => {
             const cfg = LEVEL_CONFIG[alert.level]
             const TypeIcon = alert.type === 'temperature' ? ThermometerSun : Gauge
-            const selected = selectedAlert?.alertId === alert.alertId
+            const selected = selectedAlertId === alert.alertId
             return (
-              <div key={alert.alertId} onClick={() => setSelectedAlert(alert)}
+              <div key={alert.alertId} onClick={() => setSelectedAlertId(alert.alertId)}
                 className={`bg-[#1E293B] border rounded-lg overflow-hidden cursor-pointer transition-colors ${selected ? 'border-[#F97316]' : 'border-[#334155] hover:border-[#475569]'}`}>
                 <div className="flex">
                   <div className="w-1 shrink-0" style={{ backgroundColor: cfg.color }} />
@@ -175,7 +182,7 @@ export default function Alerts() {
               </span>
               <StatusBadge status={selectedAlert.status} />
               <div className="flex-1" />
-              <button onClick={() => setSelectedAlert(null)} className="text-[#64748B] hover:text-[#F1F5F9] text-xs">关闭</button>
+              <button onClick={() => setSelectedAlertId(null)} className="text-[#64748B] hover:text-[#F1F5F9] text-xs">关闭</button>
             </div>
             <div className="space-y-3 mb-6">
               <div><span className="text-xs text-[#64748B]">区域 / 站点</span><div className="text-sm text-[#F1F5F9]">{selectedAlert.region} · {selectedAlert.stationName}</div></div>
@@ -192,10 +199,10 @@ export default function Alerts() {
               <ApprovalStepper chain={selectedAlert.approvalChain} />
             </div>
             <div className="border-t border-[#334155] pt-4 mt-4 flex gap-2">
-              {selectedAlert.status === 'pending' && <button className="flex-1 bg-[#F97316] text-white text-xs py-2 rounded hover:bg-[#EA580C]">确认告警</button>}
-              {selectedAlert.status === 'confirmed' && <button className="flex-1 bg-[#F97316] text-white text-xs py-2 rounded hover:bg-[#EA580C]">复核通过</button>}
-              {selectedAlert.status === 'reviewed' && <button className="flex-1 bg-[#22C55E] text-white text-xs py-2 rounded hover:bg-[#16A34A]">批准方案</button>}
-              {selectedAlert.status === 'approved' && <button className="flex-1 bg-[#64748B] text-white text-xs py-2 rounded hover:bg-[#475569]">标记解决</button>}
+              {selectedAlert.status === 'pending' && <button onClick={() => advanceAlert(selectedAlertId!)} className="flex-1 bg-[#F97316] text-white text-xs py-2 rounded hover:bg-[#EA580C]">确认告警</button>}
+              {selectedAlert.status === 'confirmed' && <button onClick={() => advanceAlert(selectedAlertId!)} className="flex-1 bg-[#F97316] text-white text-xs py-2 rounded hover:bg-[#EA580C]">复核通过</button>}
+              {selectedAlert.status === 'reviewed' && <button onClick={() => advanceAlert(selectedAlertId!)} className="flex-1 bg-[#22C55E] text-white text-xs py-2 rounded hover:bg-[#16A34A]">批准方案</button>}
+              {selectedAlert.status === 'approved' && <button onClick={() => advanceAlert(selectedAlertId!)} className="flex-1 bg-[#64748B] text-white text-xs py-2 rounded hover:bg-[#475569]">标记解决</button>}
             </div>
           </div>
         )}
