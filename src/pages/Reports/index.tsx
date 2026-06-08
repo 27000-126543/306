@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react'
 import ReactECharts from 'echarts-for-react'
-import { FileText, Download, Calendar, TrendingUp, Target, Lightbulb, BarChart3, PieChart } from 'lucide-react'
-import { generateReportForRegion } from '@/data/mockData'
+import { FileText, Download, Calendar, TrendingUp, Target, Lightbulb, BarChart3, PieChart, X } from 'lucide-react'
+import { generateReportForRegion, getAnomalyStationsForRegion } from '@/data/mockData'
+import type { AnomalyStation } from '@/data/mockData'
 import { useAppStore, filterCitiesByRole } from '@/store'
 
 const allRegions = [
@@ -41,6 +42,7 @@ export default function Reports() {
   const [generatedAt, setGeneratedAt] = useState<string>('')
   const [week, setWeek] = useState(weeks[0])
   const [region, setRegion] = useState('全国')
+  const [drilldown, setDrilldown] = useState<{ metric: 'compliance' | 'heatLoss'; stations: AnomalyStation[] } | null>(null)
 
   const visibleRegions = useMemo(() => {
     if (!currentUser) return allRegions.map((r) => r.name)
@@ -138,10 +140,16 @@ export default function Reports() {
 
       <div className="grid grid-cols-4 gap-4">
         {summaryCards.map(c => (
-          <div key={c.label} className="bg-[#1E293B] border border-[#334155] rounded-xl p-4">
+          <div key={c.label}
+            onClick={() => {
+              if (c.label === '室温达标率') setDrilldown({ metric: 'compliance', stations: getAnomalyStationsForRegion(safeRegion, 'compliance') })
+              else if (c.label === '热损耗率') setDrilldown({ metric: 'heatLoss', stations: getAnomalyStationsForRegion(safeRegion, 'heatLoss') })
+            }}
+            className={`bg-[#1E293B] border border-[#334155] rounded-xl p-4 ${(c.label === '室温达标率' || c.label === '热损耗率') ? 'cursor-pointer hover:border-[#F97316]/50 transition-colors' : ''}`}>
             <div className="flex items-center gap-2 mb-2">
               <c.icon className="w-4 h-4" style={{ color: c.accent }} />
               <span className="text-xs text-[#94A3B8]">{c.label}</span>
+              {(c.label === '室温达标率' || c.label === '热损耗率') && <span className="text-[8px] text-[#64748B] ml-auto">点击下钻</span>}
             </div>
             <div className="font-mono text-2xl font-bold text-white mb-1">{c.value}</div>
             <div className="text-xs text-[#94A3B8]">{c.sub}</div>
@@ -179,6 +187,64 @@ export default function Reports() {
           ))}
         </div>
       </div>
+
+      {drilldown && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setDrilldown(null)}>
+          <div className="bg-[#1E293B] border border-[#334155] rounded-xl w-[640px] max-h-[70vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b border-[#334155]">
+              <div>
+                <h3 className="text-sm font-semibold text-white">
+                  {drilldown.metric === 'compliance' ? '室温达标率异常站点' : '热损耗率异常站点'}
+                </h3>
+                <span className="text-[10px] text-[#94A3B8]">口径: {safeRegion}</span>
+              </div>
+              <button onClick={() => setDrilldown(null)} className="text-[#64748B] hover:text-[#F1F5F9]">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4">
+              {drilldown.stations.length === 0 ? (
+                <div className="text-center text-sm text-[#64748B] py-8">当前范围无异常站点</div>
+              ) : (
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-[#94A3B8] border-b border-[#334155]">
+                      <th className="py-2 px-3 text-left font-normal">站名</th>
+                      <th className="py-2 px-3 text-left font-normal">区县</th>
+                      <th className="py-2 px-3 text-right font-normal">达标率%</th>
+                      <th className="py-2 px-3 text-right font-normal">热损率%</th>
+                      <th className="py-2 px-3 text-center font-normal">状态</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {drilldown.stations.map((s) => (
+                      <tr key={s.stationId} className="border-b border-[#334155]/50">
+                        <td className="py-2 px-3 text-white">{s.stationName}</td>
+                        <td className="py-2 px-3 text-[#94A3B8]">{s.districtName}</td>
+                        <td className="py-2 px-3 text-right font-mono">
+                          <span className={s.complianceRate < 90 ? 'text-[#EF4444]' : s.complianceRate < 93 ? 'text-[#F59E0B]' : 'text-white'}>
+                            {s.complianceRate}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono">
+                          <span className={s.heatLossRate > 10 ? 'text-[#EF4444]' : s.heatLossRate > 7 ? 'text-[#F59E0B]' : 'text-white'}>
+                            {s.heatLossRate}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3 text-center">
+                          <span className={`px-2 py-0.5 rounded text-[10px] ${s.status === 'error' ? 'bg-red-500/20 text-red-400' : s.status === 'warning' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                            {s.status === 'error' ? '故障' : s.status === 'warning' ? '预警' : '正常'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

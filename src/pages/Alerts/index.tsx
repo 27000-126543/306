@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { AlertTriangle, AlertCircle, ThermometerSun, Gauge, Clock, CheckCircle, XCircle, ChevronRight, Filter, Search } from 'lucide-react'
-import { useAppStore } from '@/store'
+import { useAppStore, useVisibleAlerts } from '@/store'
 import type { Alert, AlertLevel, AlertStatus } from '@/types'
 
 const LEVEL_CONFIG: Record<AlertLevel, { label: string; color: string; bg: string; icon: typeof AlertTriangle }> = {
@@ -60,13 +60,11 @@ function StatusBadge({ status }: { status: AlertStatus }) {
 }
 
 export default function Alerts() {
-  const alerts = useAppStore(s => s.alerts)
   const advanceAlert = useAppStore(s => s.advanceAlert)
-  const getVisibleAlerts = useAppStore(s => s.getVisibleAlerts)
-  const visibleAlerts = getVisibleAlerts()
+  const visibleAlerts = useVisibleAlerts()
 
   const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null)
-  const selectedAlert = selectedAlertId ? alerts.find(a => a.alertId === selectedAlertId) || null : null
+  const selectedAlert = selectedAlertId ? visibleAlerts.find(a => a.alertId === selectedAlertId) || null : null
 
   const [levelFilter, setLevelFilter] = useState<string>('全部')
   const [typeFilter, setTypeFilter] = useState<string>('全部')
@@ -81,8 +79,11 @@ export default function Alerts() {
     return true
   })
 
-  const counts = { 1: 0, 2: 0, 3: 0 } as Record<AlertLevel, number>
-  alerts.forEach((a) => { counts[a.level]++ })
+  const counts = useMemo(() => {
+    const c = { 1: 0, 2: 0, 3: 0 } as Record<AlertLevel, number>
+    visibleAlerts.forEach((a) => { c[a.level]++ })
+    return c
+  }, [visibleAlerts])
 
   const Select = ({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: string[] }) => (
     <select value={value} onChange={(e) => onChange(e.target.value)}

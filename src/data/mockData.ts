@@ -396,6 +396,70 @@ export function generateReportForRegion(region: string, week?: string): { report
   return { report, heatLoss, energyCost, complianceTrend }
 }
 
+export interface AnomalyStation {
+  stationId: string
+  stationName: string
+  districtName: string
+  complianceRate: number
+  heatLossRate: number
+  status: 'normal' | 'warning' | 'error'
+}
+
+export function getAnomalyStationsForRegion(region: string, metric: 'compliance' | 'heatLoss'): AnomalyStation[] {
+  const cityId = allRegionsCityMap[region]
+  if (!cityId) return []
+  const stations = getStationsForCity(cityId)
+  if (metric === 'compliance') {
+    return stations
+      .filter((s) => s.complianceRate < 93)
+      .sort((a, b) => a.complianceRate - b.complianceRate)
+      .slice(0, 10)
+      .map((s) => ({
+        stationId: s.stationId,
+        stationName: s.stationName,
+        districtName: s.districtName,
+        complianceRate: s.complianceRate,
+        heatLossRate: +(5 + Math.random() * 8).toFixed(1),
+        status: s.status,
+      }))
+  }
+  return stations
+    .map((s) => ({
+      stationId: s.stationId,
+      stationName: s.stationName,
+      districtName: s.districtName,
+      complianceRate: s.complianceRate,
+      heatLossRate: +(5 + Math.random() * 10).toFixed(1),
+      status: s.status,
+    }))
+    .sort((a, b) => b.heatLossRate - a.heatLossRate)
+    .slice(0, 10)
+}
+
+const allRegionsCityMap: Record<string, string> = {
+  '全国': 'beijing',
+  '北京': 'beijing',
+  '天津': 'tianjin',
+  '唐山': 'tangshan',
+  '石家庄': 'shijiazhuang',
+  '太原': 'taiyuan',
+  '哈尔滨': 'harbin',
+  '长春': 'changchun',
+  '沈阳': 'shenyang',
+  '呼和浩特': 'huhehaote',
+  '乌鲁木齐': 'urumqi',
+  '济南': 'jinan',
+  '郑州': 'zhengzhou',
+  '西安': 'xian',
+  '兰州': 'lanzhou',
+  '西宁': 'xining',
+  '银川': 'yinchuan',
+  '大连': 'dalian',
+  '齐齐哈尔': 'qiqihaer',
+  '吉林': 'jilin',
+  '包头': 'baotou',
+}
+
 export const weeklyReportData: WeeklyReport = {
   reportId: 'r2026w23',
   weekStart: '2026-06-01',

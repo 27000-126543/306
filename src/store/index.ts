@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import { useMemo } from 'react'
 import type { UserRole, UserInfo, Alert, AlertStatus } from '@/types'
 import { alertsData as initialAlerts } from '@/data/mockData'
@@ -30,86 +31,94 @@ interface AppState {
   getVisibleAlerts: () => Alert[]
 }
 
-export const useAppStore = create<AppState>((set, get) => ({
-  currentUser: {
-    id: 'u001',
-    name: '张建国',
-    role: 'headquarters' as UserRole,
-    region: '全国',
-  },
-  currentCityId: null,
-  sidebarCollapsed: false,
-  alerts: JSON.parse(JSON.stringify(initialAlerts)),
+export const useAppStore = create<AppState>()(
+  persist(
+    (set, get) => ({
+      currentUser: {
+        id: 'u001',
+        name: '张建国',
+        role: 'headquarters' as UserRole,
+        region: '全国',
+      },
+      currentCityId: null,
+      sidebarCollapsed: false,
+      alerts: JSON.parse(JSON.stringify(initialAlerts)),
 
-  login: (user) => set({ currentUser: user }),
-  logout: () => set({ currentUser: null }),
-  setCurrentCityId: (cityId) => set({ currentCityId: cityId }),
-  toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+      login: (user) => set({ currentUser: user }),
+      logout: () => set({ currentUser: null }),
+      setCurrentCityId: (cityId) => set({ currentCityId: cityId }),
+      toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
 
-  advanceAlert: (alertId: string) => {
-    set((state) => {
-      const alerts = state.alerts.map((a) => {
-        if (a.alertId !== alertId) return a
-        const now = nowStr()
-        const user = state.currentUser!
-        let newStatus: AlertStatus = a.status
-        let newChain = [...a.approvalChain]
+      advanceAlert: (alertId: string) => {
+        set((state) => {
+          const alerts = state.alerts.map((a) => {
+            if (a.alertId !== alertId) return a
+            const now = nowStr()
+            const user = state.currentUser!
+            let newStatus: AlertStatus = a.status
+            let newChain = [...a.approvalChain]
 
-        if (a.status === 'pending') {
-          newStatus = 'confirmed'
-          newChain = [...newChain, { step: 1, role: '运维员', assignee: user.name, status: 'approved' as const, comment: '已确认告警，正在排查原因', timestamp: now }]
-        } else if (a.status === 'confirmed') {
-          newStatus = 'reviewed'
-          newChain = newChain.map((s) =>
-            s.step === 2 ? { ...s, assignee: user.name, status: 'approved' as const, comment: '复核确认，同意启动审批流程', timestamp: now } : s
-          )
-          if (!newChain.find((s) => s.step === 2)) {
-            newChain.push({ step: 2, role: '区域经理', assignee: user.name, status: 'approved' as const, comment: '复核确认，同意启动审批流程', timestamp: now })
-          }
-        } else if (a.status === 'reviewed') {
-          newStatus = 'approved'
-          newChain = newChain.map((s) =>
-            s.step === 3 ? { ...s, assignee: user.name, status: 'approved' as const, comment: '批准调度方案，立即执行', timestamp: now } : s
-          )
-          if (!newChain.find((s) => s.step === 3)) {
-            newChain.push({ step: 3, role: '总部调度', assignee: user.name, status: 'approved' as const, comment: '批准调度方案，立即执行', timestamp: now })
-          }
-        } else if (a.status === 'approved') {
-          newStatus = 'resolved'
-          newChain = newChain.map((s) =>
-            s.step === 3 ? { ...s, comment: s.comment + '；已解决', timestamp: now } : s
-          )
+            if (a.status === 'pending') {
+              newStatus = 'confirmed'
+              newChain = [...newChain, { step: 1, role: '运维员', assignee: user.name, status: 'approved' as const, comment: '已确认告警，正在排查原因', timestamp: now }]
+            } else if (a.status === 'confirmed') {
+              newStatus = 'reviewed'
+              newChain = newChain.map((s) =>
+                s.step === 2 ? { ...s, assignee: user.name, status: 'approved' as const, comment: '复核确认，同意启动审批流程', timestamp: now } : s
+              )
+              if (!newChain.find((s) => s.step === 2)) {
+                newChain.push({ step: 2, role: '区域经理', assignee: user.name, status: 'approved' as const, comment: '复核确认，同意启动审批流程', timestamp: now })
+              }
+            } else if (a.status === 'reviewed') {
+              newStatus = 'approved'
+              newChain = newChain.map((s) =>
+                s.step === 3 ? { ...s, assignee: user.name, status: 'approved' as const, comment: '批准调度方案，立即执行', timestamp: now } : s
+              )
+              if (!newChain.find((s) => s.step === 3)) {
+                newChain.push({ step: 3, role: '总部调度', assignee: user.name, status: 'approved' as const, comment: '批准调度方案，立即执行', timestamp: now })
+              }
+            } else if (a.status === 'approved') {
+              newStatus = 'resolved'
+              newChain = newChain.map((s) =>
+                s.step === 3 ? { ...s, comment: s.comment + '；已解决', timestamp: now } : s
+              )
+            }
+
+            return { ...a, status: newStatus, updatedAt: now, approvalChain: newChain }
+          })
+          return { alerts }
+        })
+      },
+
+      getVisibleCityIds: () => {
+        const user = get().currentUser
+        if (!user) return []
+        const mapping = ROLE_REGION_MAP[user.role]
+        if (user.role === 'headquarters') return []
+        return mapping.cityIds
+      },
+
+      getVisibleAlerts: () => {
+        const user = get().currentUser
+        const alerts = get().alerts
+        if (!user) return []
+        if (user.role === 'headquarters') return alerts
+        const mapping = ROLE_REGION_MAP[user.role]
+        if (user.role === 'regional') {
+          return alerts.filter((a) => mapping.cityIds.includes(a.cityId))
         }
-
-        return { ...a, status: newStatus, updatedAt: now, approvalChain: newChain }
-      })
-      return { alerts }
-    })
-  },
-
-  getVisibleCityIds: () => {
-    const user = get().currentUser
-    if (!user) return []
-    const mapping = ROLE_REGION_MAP[user.role]
-    if (user.role === 'headquarters') return []
-    return mapping.cityIds
-  },
-
-  getVisibleAlerts: () => {
-    const user = get().currentUser
-    const alerts = get().alerts
-    if (!user) return []
-    if (user.role === 'headquarters') return alerts
-    const mapping = ROLE_REGION_MAP[user.role]
-    if (user.role === 'regional') {
-      return alerts.filter((a) => mapping.cityIds.includes(a.cityId))
+        if (user.role === 'team_leader') {
+          return alerts.filter((a) => a.cityId === 'beijing' && a.assignedTo === user.name)
+        }
+        return alerts.filter((a) => a.cityId === 'beijing' && a.assignedTo === user.name && a.stationName.includes('中关村'))
+      },
+    }),
+    {
+      name: 'heat-monitor-store',
+      partialize: (state) => ({ currentUser: state.currentUser }),
     }
-    if (user.role === 'team_leader') {
-      return alerts.filter((a) => a.cityId === 'beijing' && a.assignedTo === user.name)
-    }
-    return alerts.filter((a) => a.cityId === 'beijing' && a.assignedTo === user.name && a.stationName.includes('中关村'))
-  },
-}))
+  )
+)
 
 export const canViewNational = (role: UserRole) => role === 'headquarters'
 export const canViewRegional = (role: UserRole) => role === 'headquarters' || role === 'regional'
