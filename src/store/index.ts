@@ -1,8 +1,9 @@
 import { create } from 'zustand'
+import { useMemo } from 'react'
 import type { UserRole, UserInfo, Alert, AlertStatus } from '@/types'
 import { alertsData as initialAlerts } from '@/data/mockData'
 
-const ROLE_REGION_MAP: Record<UserRole, { region: string; cityIds: string[] }> = {
+export const ROLE_REGION_MAP: Record<UserRole, { region: string; cityIds: string[] }> = {
   headquarters: { region: '全国', cityIds: [] },
   regional: { region: '华北区域', cityIds: ['beijing', 'tianjin', 'tangshan', 'shijiazhuang', 'taiyuan'] },
   team_leader: { region: '海淀区', cityIds: ['beijing'] },
@@ -121,4 +122,21 @@ export const filterCitiesByRole = (cities: any[], role: UserRole): any[] => {
   if (role === 'regional') return cities.filter((c: any) => mapping.cityIds.includes(c.cityId))
   if (role === 'team_leader') return cities.filter((c: any) => mapping.cityIds.includes(c.cityId))
   return cities.filter((c: any) => mapping.cityIds.includes(c.cityId))
+}
+
+export function useVisibleAlerts(): Alert[] {
+  const alerts = useAppStore((s) => s.alerts)
+  const currentUser = useAppStore((s) => s.currentUser)
+  return useMemo(() => {
+    if (!currentUser) return []
+    if (currentUser.role === 'headquarters') return alerts
+    const mapping = ROLE_REGION_MAP[currentUser.role]
+    if (currentUser.role === 'regional') {
+      return alerts.filter((a) => mapping.cityIds.includes(a.cityId))
+    }
+    if (currentUser.role === 'team_leader') {
+      return alerts.filter((a) => mapping.cityIds.includes(a.cityId))
+    }
+    return alerts.filter((a) => mapping.cityIds.includes(a.cityId) && a.stationName.includes('中关村'))
+  }, [alerts, currentUser])
 }

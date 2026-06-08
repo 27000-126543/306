@@ -4,7 +4,7 @@ import ReactECharts from 'echarts-for-react'
 import { Flame, Activity, TrendingDown, ThermometerSun, AlertTriangle } from 'lucide-react'
 import KPICard from '@/components/KPICard/KPICard'
 import { cityHeatData } from '@/data/mockData'
-import { useAppStore, filterCitiesByRole } from '@/store'
+import { useAppStore, filterCitiesByRole, useVisibleAlerts } from '@/store'
 
 const qualityColors: Record<string, string> = {
   excellent: '#22C55E',
@@ -36,7 +36,7 @@ export default function Dashboard() {
   const [hoveredCity, setHoveredCity] = useState<string | null>(null)
 
   const currentUser = useAppStore((s) => s.currentUser)
-  const alerts = useAppStore((s) => s.alerts)
+  const visibleAlerts = useVisibleAlerts()
 
   const visibleCities = useMemo(
     () => filterCitiesByRole(cityHeatData, currentUser?.role || 'headquarters'),
@@ -64,9 +64,9 @@ export default function Dashboard() {
     return { totalHeatLoad, avgEfficiency, heatLossRate, avgCompliance }
   }, [visibleCities])
 
-  const level1Count = alerts.filter((a) => a.level === 1).length
-  const level2Count = alerts.filter((a) => a.level === 2).length
-  const level3Count = alerts.filter((a) => a.level === 3).length
+  const level1Count = visibleAlerts.filter((a) => a.level === 1).length
+  const level2Count = visibleAlerts.filter((a) => a.level === 2).length
+  const level3Count = visibleAlerts.filter((a) => a.level === 3).length
 
   const complaintChartOption = {
     grid: { left: 80, right: 30, top: 10, bottom: 20 },
